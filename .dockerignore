@@ -1,0 +1,8 @@
+.venv
+__pycache__
+.pytest_cache
+storage/covers
+wormie.db
+.verification-runtime.db
+*.log
+.env
