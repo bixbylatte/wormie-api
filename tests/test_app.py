@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.db.base import Base
+from app.db.reset import APP_DATA_TABLES, wipe_application_data
 from app.db.session import engine
 from app.main import app
 
@@ -196,3 +198,41 @@ def test_trade_flow() -> None:
         archived_ids = {item["id"] for item in books_response.json()["items"] if item["status"] == "ARCHIVED"}
         assert owner_book["id"] in archived_ids
         assert offered_book_two["id"] in archived_ids
+
+
+def test_wipe_application_data_clears_users_and_related_records() -> None:
+    reset_state()
+    with TestClient(app) as client:
+        owner = register(client, "Owner", "owner@example.com")
+        borrower = register(client, "Borrower", "borrower@example.com")
+
+        listing = create_book(
+            client,
+            owner["token"],
+            share_mode="LEND",
+            title="Working in Public",
+            author="Nadia Eghbal",
+            max_lend_days=7,
+        )
+
+        request_response = client.post(
+            f"/api/v1/requests/books/{listing['id']}",
+            json={"requested_days": 5},
+            headers=auth_headers(borrower["token"]),
+        )
+        assert request_response.status_code == 201
+
+    with engine.begin() as connection:
+        wipe_application_data(connection)
+
+    with engine.connect() as connection:
+        for table_name in APP_DATA_TABLES:
+            row_count = connection.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar_one()
+            assert row_count == 0
+
+    with TestClient(app) as client:
+        reused_email = client.post(
+            "/api/v1/auth/register",
+            json={"display_name": "Fresh Owner", "email": "owner@example.com", "password": "verysecurepassword"},
+        )
+        assert reused_email.status_code == 201
