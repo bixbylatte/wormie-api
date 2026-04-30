@@ -13,6 +13,7 @@ param(
   [string]$RuntimeServiceAccountName = "wormie-api-runtime",
   [string]$DeployerServiceAccountName = "wormie-api-deployer",
   [string]$CloudSqlInstanceConnectionName,
+  [string]$WebServiceName,
   [string]$GcsBucketName = "wormie-ingenuity-wormie-api-covers-prod",
   [string]$AllowedOrigins = "http://127.0.0.1:5173,http://localhost:5173",
   [string]$DatabaseUrlSecretName = "wormie-api-database-url",
@@ -20,6 +21,37 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-CloudRunServiceUrls {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ServiceName
+  )
+
+  $serviceJson = & gcloud run services describe $ServiceName `
+    --project $ProjectId `
+    --account $Account `
+    --region $Region `
+    --format json
+
+  if ($LASTEXITCODE -ne 0 -or -not $serviceJson) {
+    throw "Could not resolve Cloud Run service URLs for '$ServiceName'."
+  }
+
+  $service = $serviceJson | ConvertFrom-Json
+  $urls = @()
+  $annotationUrls = $service.metadata.annotations.'run.googleapis.com/urls'
+
+  if ($annotationUrls) {
+    $urls += $annotationUrls | ConvertFrom-Json
+  }
+
+  if ($service.status.url) {
+    $urls += $service.status.url
+  }
+
+  return $urls | Where-Object { $_ } | Select-Object -Unique
+}
 
 if (-not $ProjectNumber) {
   $ProjectNumber = & gcloud projects describe $ProjectId --account $Account --format "value(projectNumber)"
@@ -36,6 +68,26 @@ if (-not $CloudSqlInstanceConnectionName) {
 $providerResource = "projects/$ProjectNumber/locations/global/workloadIdentityPools/$WifPoolId/providers/$WifProviderId"
 $runtimeServiceAccount = "$RuntimeServiceAccountName@$ProjectId.iam.gserviceaccount.com"
 $deployerServiceAccount = "$DeployerServiceAccountName@$ProjectId.iam.gserviceaccount.com"
+$resolvedOrigins = @()
+
+if ($AllowedOrigins) {
+  $resolvedOrigins += $AllowedOrigins -split ","
+}
+
+if ($WebServiceName) {
+  $resolvedOrigins += Get-CloudRunServiceUrls -ServiceName $WebServiceName
+}
+
+$AllowedOrigins = (
+  $resolvedOrigins |
+    ForEach-Object { "$_".Trim() } |
+    Where-Object { $_ } |
+    Select-Object -Unique
+) -join ","
+
+if (-not $AllowedOrigins) {
+  throw "Could not determine any allowed origins. Provide -AllowedOrigins and/or -WebServiceName."
+}
 
 $vars = @{
   "GCP_PROJECT_ID" = $ProjectId
@@ -60,3 +112,4 @@ foreach ($item in $vars.GetEnumerator()) {
 
 Write-Host ""
 Write-Host "Configured GitHub Actions variables for $Owner/$Repo."
+Write-Host "API_ALLOWED_ORIGINS: $AllowedOrigins"

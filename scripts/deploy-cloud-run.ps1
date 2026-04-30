@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$ProjectId = "wormie-ingenuity",
   [string]$Account = "bob.bbvillarin@gmail.com",
@@ -12,9 +10,58 @@ param(
   [string]$DatabaseUrlSecretName = "wormie-api-database-url",
   [string]$JwtSecretName = "wormie-api-jwt-secret",
   [string]$GcsBucketName,
+  [string]$WebServiceName,
   [string]$AllowedOrigins,
   [switch]$AllowUnauthenticated
 )
+
+$ErrorActionPreference = "Stop"
+
+function Get-CloudRunServiceUrls {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ServiceName
+  )
+
+  $serviceJson = & gcloud run services describe $ServiceName `
+    --project $ProjectId `
+    --account $Account `
+    --region $Region `
+    --format json
+
+  if ($LASTEXITCODE -ne 0 -or -not $serviceJson) {
+    throw "Could not resolve Cloud Run service URLs for '$ServiceName'."
+  }
+
+  $service = $serviceJson | ConvertFrom-Json
+  $urls = @()
+  $annotationUrls = $service.metadata.annotations.'run.googleapis.com/urls'
+
+  if ($annotationUrls) {
+    $urls += $annotationUrls | ConvertFrom-Json
+  }
+
+  if ($service.status.url) {
+    $urls += $service.status.url
+  }
+
+  return $urls | Where-Object { $_ } | Select-Object -Unique
+}
+
+function Get-PreferredCloudRunUrl {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ServiceName
+  )
+
+  $urls = Get-CloudRunServiceUrls -ServiceName $ServiceName
+  $regionalUrl = $urls | Where-Object { $_ -like "https://*.$Region.run.app" } | Select-Object -First 1
+  if ($regionalUrl) {
+    return $regionalUrl
+  }
+
+  return $urls | Select-Object -First 1
+}
 
 if (-not $RuntimeServiceAccount) {
   throw "Provide -RuntimeServiceAccount with the API Cloud Run runtime service account email."
@@ -26,7 +73,21 @@ if (-not $GcsBucketName) {
   throw "Provide -GcsBucketName with the production cover bucket."
 }
 if (-not $AllowedOrigins) {
-  throw "Provide -AllowedOrigins with the production web origin and any allowed localhost origins."
+  if (-not $WebServiceName) {
+    throw "Provide -AllowedOrigins with the production web origin and any allowed localhost origins, or pass -WebServiceName to resolve Cloud Run URLs automatically."
+  }
+
+  $resolvedOrigins = @(
+    "http://127.0.0.1:5173",
+    "http://localhost:5173"
+  )
+  $resolvedOrigins += Get-CloudRunServiceUrls -ServiceName $WebServiceName
+  $AllowedOrigins = (
+    $resolvedOrigins |
+      ForEach-Object { "$_".Trim() } |
+      Where-Object { $_ } |
+      Select-Object -Unique
+  ) -join ","
 }
 
 & gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com sqladmin.googleapis.com `
@@ -114,18 +175,16 @@ ALLOWED_ORIGINS: "$AllowedOrigins"
 
   & gcloud @deployArgs
 
-  $serviceUrl = & gcloud run services describe $ServiceName `
-    --region $Region `
-    --project $ProjectId `
-    --account $Account `
-    --format "value(status.url)"
+  $serviceUrl = Get-PreferredCloudRunUrl -ServiceName $ServiceName
+  $serviceUrls = Get-CloudRunServiceUrls -ServiceName $ServiceName
 
   Invoke-WebRequest -Uri "$serviceUrl/health" -UseBasicParsing | Out-Null
 
   Write-Host ""
   Write-Host "Deployed $ServiceName to Cloud Run."
   Write-Host "Image: $imageUri"
-  Write-Host "Service URL: $serviceUrl"
+  Write-Host "Service URLs: $($serviceUrls -join ', ')"
+  Write-Host "Allowed origins: $AllowedOrigins"
 }
 finally {
   Remove-Item -LiteralPath $envFile -Force -ErrorAction SilentlyContinue
