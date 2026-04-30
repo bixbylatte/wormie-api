@@ -14,6 +14,12 @@ $payload = @{
     contexts = @($RequiredCheck)
   }
   enforce_admins = $true
+  required_pull_request_reviews = @{
+    dismiss_stale_reviews = $true
+    require_code_owner_reviews = $false
+    required_approving_review_count = [Math]::Max($RequiredApprovingReviewCount, 1)
+    require_last_push_approval = $false
+  }
   restrictions = $null
   required_linear_history = $true
   allow_force_pushes = $false
@@ -22,18 +28,6 @@ $payload = @{
   required_conversation_resolution = $true
   lock_branch = $false
   allow_fork_syncing = $true
-}
-
-if ($RequiredApprovingReviewCount -gt 0) {
-  $payload.required_pull_request_reviews = @{
-    dismiss_stale_reviews = $true
-    require_code_owner_reviews = $false
-    required_approving_review_count = $RequiredApprovingReviewCount
-    require_last_push_approval = $false
-  }
-}
-else {
-  $payload.required_pull_request_reviews = $null
 }
 
 $payload = $payload | ConvertTo-Json -Depth 6
@@ -46,6 +40,13 @@ try {
     -H "Accept: application/vnd.github+json" `
     "/repos/$Owner/$Repo/branches/$Branch/protection" `
     --input $tempFile | Out-Null
+
+  if ($RequiredApprovingReviewCount -le 0) {
+    & 'C:\Program Files\GitHub CLI\gh.exe' api `
+      --method DELETE `
+      -H "Accept: application/vnd.github+json" `
+      "/repos/$Owner/$Repo/branches/$Branch/protection/required_pull_request_reviews" | Out-Null
+  }
 }
 finally {
   Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
