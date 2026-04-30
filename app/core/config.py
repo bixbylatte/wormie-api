@@ -1,9 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     gcs_bucket_name: str | None = None
     gcs_public_base_url: str | None = None
     max_upload_size_mb: int = 5
-    allowed_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
+    allowed_origins: Annotated[list[str], NoDecode] = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
