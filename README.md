@@ -82,5 +82,8 @@ Once CI has run successfully at least once, protect the production branch:
 
 - Local development still defaults to `wormie.db` and `storage/covers/`.
 - Production should use Cloud SQL and Cloud Storage only.
+- Production `cover_url` values should resolve to public `https://storage.googleapis.com/<bucket>/<object-key>` URLs.
+- Public HTTPS deployments now reject `STORAGE_BACKEND=local` at startup to avoid broken ephemeral cover uploads on Cloud Run.
+- `GCS_PUBLIC_BASE_URL` remains reserved for future CDN/custom-domain work and is not part of the current production URL contract.
 - `seed_demo.py` intentionally supports local storage only.
 - PRs validate tests and Docker build. Pushes to `main` deploy production.

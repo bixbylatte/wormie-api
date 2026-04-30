@@ -35,9 +35,9 @@ class LocalCoverStorage:
 
 
 class GoogleCloudStorageCoverStorage:
-    def __init__(self, bucket_name: str, public_base_url: str | None = None) -> None:
+    def __init__(self, bucket_name: str, public_base_url: str | None = None, client: storage.Client | None = None) -> None:
         self.bucket_name = bucket_name
-        self.client = storage.Client()
+        self.client = client or storage.Client()
         self.bucket = self.client.bucket(bucket_name)
         self.public_base_url = public_base_url.rstrip("/") if public_base_url else None
 
@@ -50,9 +50,7 @@ class GoogleCloudStorageCoverStorage:
         return object_key
 
     def url_for(self, object_key: str) -> str:
-        if self.public_base_url:
-            return f"{self.public_base_url}/{quote(object_key)}"
-        return f"https://storage.googleapis.com/{self.bucket_name}/{quote(object_key)}"
+        return f"https://storage.googleapis.com/{self.bucket_name}/{quote(object_key, safe='/')}"
 
 
 def build_cover_storage(settings: Settings) -> CoverStorage:
