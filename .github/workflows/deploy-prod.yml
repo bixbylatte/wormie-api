@@ -69,7 +69,6 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
         with:
-          version: ">= 565.0.0"
           project_id: ${{ env.PROJECT_ID }}
 
       - name: Configure Docker auth
