@@ -2,7 +2,8 @@ param(
   [string]$Owner = "bixbylatte",
   [string]$Repo = "wormie-api",
   [string]$Branch = "main",
-  [string]$RequiredCheck = "ci"
+  [string]$RequiredCheck = "ci",
+  [int]$RequiredApprovingReviewCount = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,12 +14,6 @@ $payload = @{
     contexts = @($RequiredCheck)
   }
   enforce_admins = $true
-  required_pull_request_reviews = @{
-    dismiss_stale_reviews = $true
-    require_code_owner_reviews = $false
-    required_approving_review_count = 1
-    require_last_push_approval = $false
-  }
   restrictions = $null
   required_linear_history = $true
   allow_force_pushes = $false
@@ -27,7 +22,21 @@ $payload = @{
   required_conversation_resolution = $true
   lock_branch = $false
   allow_fork_syncing = $true
-} | ConvertTo-Json -Depth 6
+}
+
+if ($RequiredApprovingReviewCount -gt 0) {
+  $payload.required_pull_request_reviews = @{
+    dismiss_stale_reviews = $true
+    require_code_owner_reviews = $false
+    required_approving_review_count = $RequiredApprovingReviewCount
+    require_last_push_approval = $false
+  }
+}
+else {
+  $payload.required_pull_request_reviews = $null
+}
+
+$payload = $payload | ConvertTo-Json -Depth 6
 
 $tempFile = New-TemporaryFile
 try {
