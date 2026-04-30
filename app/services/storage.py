@@ -50,8 +50,6 @@ class GoogleCloudStorageCoverStorage:
         return object_key
 
     def url_for(self, object_key: str) -> str:
-        if self.public_base_url:
-            return f"{self.public_base_url}/{quote(object_key, safe='/')}"
         return f"https://storage.googleapis.com/{self.bucket_name}/{quote(object_key, safe='/')}"
 
 
