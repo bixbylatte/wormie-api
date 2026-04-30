@@ -10,3 +10,11 @@ if (-not (Test-Path $venvPython)) {
 
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r (Join-Path $repoRoot "requirements.txt")
+
+Push-Location $repoRoot
+try {
+  & $venvPython .\scripts\migrate.py
+}
+finally {
+  Pop-Location
+}

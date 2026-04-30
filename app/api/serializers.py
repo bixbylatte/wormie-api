@@ -3,14 +3,14 @@ from app.models.share_request import ShareRequest
 from app.schemas.auth import UserSummary
 from app.schemas.books import BookSummary
 from app.schemas.requests import ShareRequestSummary
-from app.services.storage import LocalCoverStorage
+from app.services.storage import CoverStorage
 
 
 def serialize_user(user) -> UserSummary:
     return UserSummary.model_validate(user)
 
 
-def serialize_book(book: BookListing, storage: LocalCoverStorage) -> BookSummary:
+def serialize_book(book: BookListing, storage: CoverStorage) -> BookSummary:
     return BookSummary(
         id=book.id,
         share_mode=book.share_mode,
@@ -26,7 +26,7 @@ def serialize_book(book: BookListing, storage: LocalCoverStorage) -> BookSummary
     )
 
 
-def serialize_request(share_request: ShareRequest, storage: LocalCoverStorage) -> ShareRequestSummary:
+def serialize_request(share_request: ShareRequest, storage: CoverStorage) -> ShareRequestSummary:
     return ShareRequestSummary(
         id=share_request.id,
         status=share_request.status,
@@ -40,4 +40,3 @@ def serialize_request(share_request: ShareRequest, storage: LocalCoverStorage) -
         offered_books=[serialize_book(item.offered_book, storage) for item in share_request.offered_books],
         selected_offered_book_id=share_request.selected_offered_book_id,
     )
-

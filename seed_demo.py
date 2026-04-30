@@ -25,6 +25,9 @@ def write_cover(name: str) -> str:
 
 
 def seed() -> None:
+    if get_settings().storage_backend != "local":
+        raise RuntimeError("seed_demo.py only supports local storage. Set STORAGE_BACKEND=local before seeding demo data.")
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     storage_dir = get_settings().cover_storage_dir

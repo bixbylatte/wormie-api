@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     token_expiry_minutes: int = 60 * 24 * 7
     cover_storage_dir: Path = Field(default=Path("storage/covers"))
+    storage_backend: Literal["local", "gcs"] = "local"
+    gcs_bucket_name: str | None = None
+    gcs_public_base_url: str | None = None
     max_upload_size_mb: int = 5
     allowed_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
@@ -36,5 +39,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     settings.cover_storage_dir = settings.cover_storage_dir.resolve()
-    settings.cover_storage_dir.mkdir(parents=True, exist_ok=True)
+    if settings.storage_backend == "local":
+        settings.cover_storage_dir.mkdir(parents=True, exist_ok=True)
     return settings

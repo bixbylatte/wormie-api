@@ -13,7 +13,10 @@ class ShareRequest(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     book_id: Mapped[int] = mapped_column(ForeignKey("book_listings.id"), index=True)
     requester_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    status: Mapped[RequestStatus] = mapped_column(Enum(RequestStatus), default=RequestStatus.PENDING)
+    status: Mapped[RequestStatus] = mapped_column(
+        Enum(RequestStatus, name="request_status", native_enum=False, length=32),
+        default=RequestStatus.PENDING,
+    )
     requested_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     selected_offered_book_id: Mapped[int | None] = mapped_column(ForeignKey("book_listings.id"), nullable=True)
@@ -39,4 +42,3 @@ class TradeRequestOffer(Base):
 
     request = relationship("ShareRequest", back_populates="offered_books")
     offered_book = relationship("BookListing", back_populates="offered_in_requests")
-

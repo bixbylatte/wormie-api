@@ -12,8 +12,11 @@ class BookListing(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    share_mode: Mapped[ShareMode] = mapped_column(Enum(ShareMode))
-    status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.AVAILABLE)
+    share_mode: Mapped[ShareMode] = mapped_column(Enum(ShareMode, name="share_mode", native_enum=False, length=32))
+    status: Mapped[ListingStatus] = mapped_column(
+        Enum(ListingStatus, name="listing_status", native_enum=False, length=32),
+        default=ListingStatus.AVAILABLE,
+    )
     max_lend_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     author: Mapped[str] = mapped_column(String(255))
@@ -39,4 +42,3 @@ class BookListing(Base):
         foreign_keys="ShareRequest.selected_offered_book_id",
         back_populates="selected_offered_book",
     )
-

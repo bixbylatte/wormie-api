@@ -11,11 +11,11 @@ from app.models.enums import ListingStatus, RequestStatus, ShareMode
 from app.models.share_request import ShareRequest
 from app.models.user import User
 from app.schemas.books import BookAvailabilityInput, BookListResponse, BookSummary
-from app.services.storage import LocalCoverStorage
+from app.services.storage import build_cover_storage
 
 router = APIRouter(prefix="/books", tags=["books"])
 settings = get_settings()
-storage = LocalCoverStorage(settings.cover_storage_dir)
+storage = build_cover_storage(settings)
 
 
 @router.get("", response_model=BookListResponse)

@@ -13,10 +13,10 @@ from app.models.enums import ListingStatus, RequestStatus, ShareMode
 from app.models.share_request import ShareRequest, TradeRequestOffer
 from app.models.user import User
 from app.schemas.requests import ApproveShareRequestInput, CreateShareRequestInput, GroupedRequestsResponse, ShareRequestSummary
-from app.services.storage import LocalCoverStorage
+from app.services.storage import build_cover_storage
 
 router = APIRouter(prefix="/requests", tags=["requests"])
-storage = LocalCoverStorage(get_settings().cover_storage_dir)
+storage = build_cover_storage(get_settings())
 
 
 def _request_query():

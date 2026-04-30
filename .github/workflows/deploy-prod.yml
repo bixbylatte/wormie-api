@@ -1,0 +1,169 @@
+name: Deploy Prod
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: wormie-api-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+      SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE }}
+      MIGRATION_JOB_NAME: ${{ vars.CLOUD_RUN_JOB }}
+      WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+      DEPLOYER_SERVICE_ACCOUNT: ${{ vars.DEPLOYER_SERVICE_ACCOUNT }}
+      RUNTIME_SERVICE_ACCOUNT: ${{ vars.RUNTIME_SERVICE_ACCOUNT }}
+      CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+      GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME }}
+      API_ALLOWED_ORIGINS: ${{ vars.API_ALLOWED_ORIGINS }}
+      DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
+      JWT_SECRET_NAME: ${{ vars.JWT_SECRET_NAME }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Validate required variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_vars=(
+            PROJECT_ID REGION REPOSITORY SERVICE_NAME MIGRATION_JOB_NAME
+            WIF_PROVIDER DEPLOYER_SERVICE_ACCOUNT RUNTIME_SERVICE_ACCOUNT
+            CLOUD_SQL_INSTANCE GCS_BUCKET_NAME DATABASE_URL_SECRET_NAME
+            JWT_SECRET_NAME
+          )
+          for key in "${required_vars[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing required GitHub Actions variable: ${key}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Set default allowed origins
+        shell: bash
+        run: |
+          if [[ -z "${API_ALLOWED_ORIGINS:-}" ]]; then
+            echo "API_ALLOWED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173" >> "$GITHUB_ENV"
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          version: ">= 565.0.0"
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Build and push image
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${SERVICE_NAME}:${GITHUB_SHA}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+          docker build -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+
+      - name: Write Cloud Run env file
+        shell: bash
+        run: |
+          cat > cloud-run-env.yaml <<EOF
+STORAGE_BACKEND: "gcs"
+GCS_BUCKET_NAME: "${GCS_BUCKET_NAME}"
+ALLOWED_ORIGINS: "${API_ALLOWED_ORIGINS}"
+          EOF
+
+      - name: Run Alembic migration job
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy "${MIGRATION_JOB_NAME}" \
+            --image "${IMAGE_URI}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --cpu 1 \
+            --memory 1Gi \
+            --task-timeout 10m \
+            --max-retries 0 \
+            --tasks 1 \
+            --parallelism 1 \
+            --set-cloudsql-instances "${CLOUD_SQL_INSTANCE}" \
+            --env-vars-file cloud-run-env.yaml \
+            --set-secrets "DATABASE_URL=${DATABASE_URL_SECRET_NAME}:latest,JWT_SECRET=${JWT_SECRET_NAME}:latest" \
+            --command alembic \
+            --args upgrade,head \
+            --execute-now \
+            --wait
+
+      - name: Deploy API service
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run deploy "${SERVICE_NAME}" \
+            --image "${IMAGE_URI}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --cpu 1 \
+            --memory 1Gi \
+            --concurrency 40 \
+            --min-instances 0 \
+            --execution-environment gen2 \
+            --allow-unauthenticated \
+            --set-cloudsql-instances "${CLOUD_SQL_INSTANCE}" \
+            --env-vars-file cloud-run-env.yaml \
+            --set-secrets "DATABASE_URL=${DATABASE_URL_SECRET_NAME}:latest,JWT_SECRET=${JWT_SECRET_NAME}:latest"
+
+      - name: Verify health
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE_URL="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --project "${PROJECT_ID}" --format='value(status.url)')"
+          curl --fail --silent --show-error "${SERVICE_URL}/health" >/dev/null
+          echo "SERVICE_URL=${SERVICE_URL}" >> "$GITHUB_ENV"
+          echo "service_url=${SERVICE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Write deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## Wormie API production deployment"
+            echo ""
+            echo "- Image: \`${IMAGE_URI}\`"
+            echo "- Migration job: \`${MIGRATION_JOB_NAME}\` completed successfully"
+            echo "- Service URL: ${SERVICE_URL}"
+            echo "- Health check: \`${SERVICE_URL}/health\` passed"
+          } >> "$GITHUB_STEP_SUMMARY"
