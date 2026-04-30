@@ -1,9 +1,23 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+LOCAL_HOSTNAMES = {"127.0.0.1", "::1", "localhost"}
+
+
+def is_absolute_http_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def is_public_https_origin(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and parsed.hostname not in LOCAL_HOSTNAMES and bool(parsed.netloc)
 
 
 class Settings(BaseSettings):
@@ -33,6 +47,25 @@ class Settings(BaseSettings):
                 return value
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
         return value
+
+    @field_validator("gcs_public_base_url")
+    @classmethod
+    def validate_gcs_public_base_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if not is_absolute_http_url(normalized):
+            raise ValueError("GCS_PUBLIC_BASE_URL must be an absolute http or https URL.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_storage_backend(self) -> "Settings":
+        if self.storage_backend == "local" and any(is_public_https_origin(origin) for origin in self.allowed_origins):
+            raise ValueError("Local storage cannot be used when public HTTPS origins are configured. Set STORAGE_BACKEND=gcs.")
+        return self
 
 
 @lru_cache
