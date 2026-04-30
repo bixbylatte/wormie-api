@@ -52,8 +52,10 @@ That script creates or updates:
 After GCP bootstrap, configure repository variables:
 
 ```powershell
-.\scripts\configure-github-repo.ps1
+.\scripts\configure-github-repo.ps1 -WebServiceName "wormie-web"
 ```
+
+That resolves both public Cloud Run URLs for the `wormie-web` service and adds them to `API_ALLOWED_ORIGINS` alongside localhost origins.
 
 ### Manual fallback deploy
 
@@ -66,7 +68,7 @@ Deploy this repo manually as its own Cloud Run service:
   -RuntimeServiceAccount "wormie-api-runtime@wormie-ingenuity.iam.gserviceaccount.com" `
   -CloudSqlInstance "wormie-ingenuity:asia-east1:wormie-pg" `
   -GcsBucketName "wormie-ingenuity-wormie-api-covers-prod" `
-  -AllowedOrigins "http://127.0.0.1:5173,http://localhost:5173" `
+  -WebServiceName "wormie-web" `
   -AllowUnauthenticated
 ```
 
@@ -78,9 +80,25 @@ Once CI has run successfully at least once, protect the production branch:
 .\scripts\enable-branch-protection.ps1
 ```
 
+That script also configures the repository to use squash merges only.
+
+## PR To Production
+
+Production changes should flow through GitHub only:
+
+1. Branch from `main`.
+2. Open a PR and wait for the `ci` workflow to pass.
+3. Get one approval and resolve review comments.
+4. Squash merge to `main`.
+5. Let `deploy-prod` publish to Cloud Run automatically.
+
+If a change spans both repos, merge and deploy `wormie-api` first, then merge `wormie-web` after the API deployment smoke checks pass.
+
 ## Notes
 
 - Local development still defaults to `wormie.db` and `storage/covers/`.
 - Production should use Cloud SQL and Cloud Storage only.
 - `seed_demo.py` intentionally supports local storage only.
+- Cloud Run assigns two public URLs to a service. CORS needs to allow both the regional `...asia-east1.run.app` URL and the `...a.run.app` URL for the web service.
 - PRs validate tests and Docker build. Pushes to `main` deploy production.
+- Use `workflow_dispatch` as break-glass only. Avoid direct `gcloud` production hotfixes; if one is unavoidable, merge the matching repo fix immediately after.
