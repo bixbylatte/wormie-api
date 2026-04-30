@@ -98,11 +98,11 @@ jobs:
       - name: Write Cloud Run env file
         shell: bash
         run: |
-          cat > cloud-run-env.yaml <<EOF
-STORAGE_BACKEND: "gcs"
-GCS_BUCKET_NAME: "${GCS_BUCKET_NAME}"
-ALLOWED_ORIGINS: "${API_ALLOWED_ORIGINS}"
-          EOF
+          {
+            printf 'STORAGE_BACKEND: "gcs"\n'
+            printf 'GCS_BUCKET_NAME: "%s"\n' "${GCS_BUCKET_NAME}"
+            printf 'ALLOWED_ORIGINS: "%s"\n' "${API_ALLOWED_ORIGINS}"
+          } > cloud-run-env.yaml
 
       - name: Run Alembic migration job
         shell: bash
