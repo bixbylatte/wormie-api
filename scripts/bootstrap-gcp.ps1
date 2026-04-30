@@ -289,7 +289,7 @@ if ($RotateRuntimeSecrets -or -not $databaseVersionLookup) {
     Invoke-Gcloud -Args @("sql", "users", "set-password", $CloudSqlUserName, "--instance", $CloudSqlInstanceName, "--password", $CloudSqlUserPassword) | Out-Null
   }
 
-  $dbConnectionString = "postgresql+psycopg://${CloudSqlUserName}:${CloudSqlUserPassword}@/$CloudSqlDbName?host=/cloudsql/$instanceConnectionName"
+  $dbConnectionString = "postgresql+psycopg://${CloudSqlUserName}:${CloudSqlUserPassword}@/${CloudSqlDbName}?host=/cloudsql/${instanceConnectionName}"
   $dbTempFile = New-TemporaryFile
   try {
     Set-Content -Path $dbTempFile -Value $dbConnectionString -NoNewline
