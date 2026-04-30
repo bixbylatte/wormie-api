@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$ProjectId = "wormie-ingenuity",
   [string]$Account = "bob.bbvillarin@gmail.com",
@@ -15,6 +13,8 @@ param(
   [string]$AllowedOrigins,
   [switch]$AllowUnauthenticated
 )
+
+$ErrorActionPreference = "Stop"
 
 if (-not $RuntimeServiceAccount) {
   throw "Provide -RuntimeServiceAccount with the API Cloud Run runtime service account email."
@@ -51,7 +51,7 @@ if (-not $repositoryLookup) {
 
 $imageTag = Get-Date -Format "yyyyMMdd-HHmmss"
 $imageUri = "$Region-docker.pkg.dev/$ProjectId/$Repository/${ServiceName}:$imageTag"
-$secretRefs = "DATABASE_URL=$DatabaseUrlSecretName:latest,JWT_SECRET=$JwtSecretName:latest"
+$secretRefs = "DATABASE_URL=${DatabaseUrlSecretName}:latest,JWT_SECRET=${JwtSecretName}:latest"
 $envFile = New-TemporaryFile
 
 try {
